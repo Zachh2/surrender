@@ -1,0 +1,9 @@
+{
+  "name": "Phone Surrender Attendance",
+  "short_name": "Surrender Desk",
+  "start_url": "./?scan=1",
+  "display": "standalone",
+  "background_color": "#edf2f8",
+  "theme_color": "#09111f",
+  "description": "Offline-first school phone surrender tracker."
+}
