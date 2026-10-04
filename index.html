@@ -107,6 +107,7 @@
     .qr-frame img { width:100%; height:100%; object-fit:contain; border-radius:10px; }
     .qr-fallback { display:none; text-align:center; color:var(--navy); font-size:11px; line-height:1.25; padding:10px; }
     .qr-link { color:#a8f1df; font-size:11px; word-break:break-all; opacity:.82; }
+    .qr-mode-note { margin:10px 0 0; color:#9eacc3; font-size:11px; line-height:1.45; }
     .qr-actions { display:flex; gap:8px; margin-top:16px; }
     .qr-actions .btn { font-size:12px; padding:9px 11px; }
     .info-card { padding:24px 25px; }
@@ -292,6 +293,7 @@
               <div class="qr-fallback" id="qrFallback">Open the link below to generate or print a QR from any QR tool.</div>
             </div>
             <div class="qr-link" id="qrLink">Preparing link…</div>
+            <p class="qr-mode-note">GitHub Pages is a phase test and keeps records on each device. For one shared offline register, run <strong>server.js</strong> on the teacher computer and use its school-LAN URL.</p>
             <div class="qr-actions"><button class="btn btn-primary" id="copyLinkBtn" type="button">Copy link</button><button class="btn btn-ghost" id="printQrBtn" type="button">Print QR</button></div>
           </section>
           <section class="card info-card">
@@ -352,6 +354,7 @@
     (() => {
       const STORAGE_KEY = 'phone-surrender-records-v1';
       const ACTIVE_KEY = 'phone-surrender-active-id-v1';
+      const TEACHER_SESSION_KEY = 'phone-surrender-teacher-session-v1';
       const sections = ['All', 'Cirrus', 'Alto', 'Stratus', 'Nimbus', 'Other'];
       const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
       const HISTORY_RETENTION_MS = 31 * 24 * 60 * 60 * 1000;
@@ -365,6 +368,8 @@
       let selectedMonth = new Date().getMonth();
       let viewMode = 'active';
       let toastTimer;
+      let serverAvailable = false;
+      let syncInFlight = null;
 
       const saveRecords = (items) => localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
       const purgeExpiredHistory = (items) => {
@@ -390,10 +395,55 @@
       const makeId = () => `ps-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const showToast = (message) => { $('toast').textContent = message; $('toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 2400); };
 
+      const apiUrl = (path) => `${window.location.origin}/api${path}`;
+      const setSyncState = (available) => {
+        serverAvailable = available;
+        const online = navigator.onLine;
+        $('networkDot').classList.toggle('offline', !online || !available);
+        $('networkText').textContent = available ? 'School LAN · synced' : online ? 'GitHub test · device only' : 'Offline queue';
+      };
+      const syncRecord = async (record) => {
+        try {
+          const response = await fetch(apiUrl('/records'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record) });
+          if (!response.ok) throw new Error('sync failed');
+          record.syncPending = false;
+          setSyncState(true);
+          saveRecords(records);
+          return true;
+        } catch (_) {
+          record.syncPending = true;
+          setSyncState(false);
+          saveRecords(records);
+          return false;
+        }
+      };
+      const syncFromServer = async () => {
+        try {
+          const response = await fetch(apiUrl('/records'), { cache: 'no-store' });
+          if (!response.ok) throw new Error('server unavailable');
+          const remote = await response.json();
+          if (!Array.isArray(remote)) throw new Error('invalid records');
+          const localById = new Map(records.map((record) => [record.id, record]));
+          remote.forEach((record) => localById.set(record.id, { ...localById.get(record.id), ...record, syncPending: false }));
+          records = purgeExpiredHistory(Array.from(localById.values()));
+          saveRecords(records);
+          setSyncState(true);
+          return true;
+        } catch (_) {
+          setSyncState(false);
+          return false;
+        }
+      };
+      const syncPendingRecords = async () => {
+        const pending = records.filter((record) => record.syncPending);
+        for (const record of pending) await syncRecord(record);
+        return syncFromServer();
+      };
+
       const setOnlineState = () => {
         const online = navigator.onLine;
         $('networkDot').classList.toggle('offline', !online);
-        $('networkText').textContent = online ? 'Online · offline-ready' : 'Offline mode';
+        $('networkText').textContent = online ? (serverAvailable ? 'School LAN · synced' : 'GitHub test · device only') : 'Offline queue';
       };
       window.addEventListener('online', setOnlineState); window.addEventListener('offline', setOnlineState); setOnlineState();
 
@@ -422,7 +472,9 @@
         if (!record) return;
         record.active = false;
         record.returnedAt = new Date().toISOString();
+        record.syncPending = true;
         saveRecords(records);
+        syncRecord(record);
         localStorage.removeItem(ACTIVE_KEY);
         $('successCard').classList.remove('visible');
         $('surrenderCard').hidden = false;
@@ -434,8 +486,9 @@
         event.preventDefault();
         if (activeRecordForThisBrowser()) { showReceipt(activeRecordForThisBrowser()); return; }
         const form = new FormData(event.currentTarget);
-        const record = { id: makeId(), name: String(form.get('studentName')).trim(), section: String(form.get('studentSection')), phone: String(form.get('phoneLabel') || '').trim() || 'Not specified', surrenderedAt: new Date().toISOString(), active: true };
+        const record = { id: makeId(), name: String(form.get('studentName')).trim(), section: String(form.get('studentSection')), phone: String(form.get('phoneLabel') || '').trim() || 'Not specified', surrenderedAt: new Date().toISOString(), active: true, syncPending: true };
         records = [record, ...records]; saveRecords(records); localStorage.setItem(ACTIVE_KEY, record.id); showReceipt(record); showToast('Phone surrender recorded');
+        syncRecord(record).then((synced) => showToast(synced ? 'Phone surrender synced to teacher register' : 'Saved on this phone; connect to school LAN to sync'));
       });
 
       const renderViewTabs = () => {
@@ -473,7 +526,7 @@
         $('emptyState').hidden = visible.length > 0;
         $('recordsBody').querySelectorAll('.unsurrender-btn').forEach((button) => button.addEventListener('click', () => {
           const record = records.find((item) => item.id === button.dataset.id); if (!record) return;
-          record.active = false; record.returnedAt = new Date().toISOString(); saveRecords(records);
+          record.active = false; record.returnedAt = new Date().toISOString(); record.syncPending = true; saveRecords(records); syncRecord(record);
           if (localStorage.getItem(ACTIVE_KEY) === record.id) localStorage.removeItem(ACTIVE_KEY);
           renderDashboard(); showToast(`${record.name} marked returned`);
         }));
@@ -483,16 +536,18 @@
 
       const openLogin = () => { $('loginModal').classList.add('visible'); $('teacherPin').value = ''; $('loginError').classList.remove('visible'); setTimeout(() => $('teacherPin').focus(), 60); };
       const closeLogin = () => $('loginModal').classList.remove('visible');
-      const openTeacher = () => { $('studentView').classList.add('hidden'); $('teacherView').classList.add('visible'); renderDashboard(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+      const openTeacher = () => { localStorage.setItem(TEACHER_SESSION_KEY, '1'); $('studentView').classList.add('hidden'); $('teacherView').classList.add('visible'); renderDashboard(); syncPendingRecords().then(renderDashboard); window.scrollTo({ top: 0, behavior: 'smooth' }); };
       $('teacherBtn').addEventListener('click', openLogin); $('openTeacherFooter').addEventListener('click', (event) => { event.preventDefault(); openLogin(); }); $('cancelLoginBtn').addEventListener('click', closeLogin);
       $('loginBtn').addEventListener('click', () => { if ($('teacherPin').value.trim() === '2468') { closeLogin(); openTeacher(); } else $('loginError').classList.add('visible'); });
       $('teacherPin').addEventListener('keydown', (event) => { if (event.key === 'Enter') $('loginBtn').click(); if (event.key === 'Escape') closeLogin(); });
-      $('exitTeacherBtn').addEventListener('click', () => { $('teacherView').classList.remove('visible'); $('studentView').classList.remove('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      $('exitTeacherBtn').addEventListener('click', () => { localStorage.removeItem(TEACHER_SESSION_KEY); $('teacherView').classList.remove('visible'); $('studentView').classList.remove('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' }); });
       $('exportBtn').addEventListener('click', () => {
         const current = visibleRecords(); const header = viewMode === 'active' ? ['Name','Section','Phone','Surrendered at','Status'] : ['Name','Section','Phone','Surrendered at','Returned at','Status']; const rows = current.map((record) => viewMode === 'active' ? [record.name, record.section, record.phone, record.surrenderedAt, 'Active'] : [record.name, record.section, record.phone, record.surrenderedAt, record.returnedAt || '', 'Returned']); const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n'); const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `phone-register-${viewMode}-${new Date().toISOString().slice(0,10)}.csv`; link.click(); URL.revokeObjectURL(url); showToast('CSV exported');
       });
 
       maybeRestoreActive();
+      syncFromServer().then(() => { if (localStorage.getItem(TEACHER_SESSION_KEY) === '1' && !$('teacherView').classList.contains('visible')) openTeacher(); });
+      setInterval(() => { if ($('teacherView').classList.contains('visible')) syncPendingRecords().then(renderDashboard); }, 5000);
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js?v=2').catch(() => {});
       if (new URLSearchParams(window.location.search).has('scan')) setTimeout(() => $('studentName').focus(), 250);
     })();
