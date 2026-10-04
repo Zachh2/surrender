@@ -205,6 +205,16 @@
       footer { flex-direction:column; gap:7px; }
     }
   </style>
+
+<style>
+@media (max-width: 600px) {
+ body { padding: 10px !important; }
+ .card, .panel { border-radius: 22px !important; }
+ button { min-height: 46px; font-size: 15px; }
+ .grid { grid-template-columns: 1fr !important; }
+}
+.status-pill { box-shadow: 0 8px 25px rgba(0,0,0,.08); }
+</style>
 </head>
 <body>
   <div class="app-shell">
@@ -229,7 +239,7 @@
           <p>Scan the school QR, add your name and section, then leave your phone with confidence. Your active surrender stays on this device until a teacher returns it.</p>
           <div class="hero-note">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 10v5M12 7.2h.01"/></svg>
-            <span>Offline mode means no internet is needed after the first load. For a first scan, phones must share the school Wi‑Fi/LAN or an already-cached copy of this page.</span>
+            
           </div>
         </div>
         <div class="hero-art" aria-hidden="true">
@@ -277,7 +287,7 @@
               </div>
             </div>
             <div class="form-footer">
-              <div class="privacy-copy"><strong>Teacher view only.</strong> This prototype stores the register on this browser. Connect a school database before using it for real student records.</div>
+              
               <button class="btn btn-primary" type="submit">Surrender phone</button>
             </div>
           </form>
@@ -297,12 +307,7 @@
             <div class="qr-actions"><button class="btn btn-primary" id="copyLinkBtn" type="button">Copy link</button><button class="btn btn-ghost" id="printQrBtn" type="button">Print QR</button></div>
           </section>
           <section class="card info-card">
-            <h3>What happens next</h3>
-            <ul class="info-list">
-              <li><span class="info-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M12 4v16"/></svg></span><div><b>Scan once</b><span>The QR opens the student page for everyone.</span></div></li>
-              <li><span class="info-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.5 10 17l9-10"/></svg></span><div><b>Confirm status</b><span>The student sees “already surrendered” after saving.</span></div></li>
-              <li><span class="info-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span><div><b>Teacher returns</b><span>Only the teacher dashboard can mark a phone returned.</span></div></li>
-            </ul>
+            
           </section>
         </div>
       </main>

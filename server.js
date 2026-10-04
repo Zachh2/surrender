@@ -17,11 +17,38 @@ const demoRecords = [
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify(demoRecords, null, 2));
+syncAutoUnsurrender();
+setInterval(syncAutoUnsurrender, 60000);
 
 const readRecords = () => {
   try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (_) { return []; }
 };
 const writeRecords = (records) => fs.writeFileSync(DATA_FILE, JSON.stringify(records, null, 2));
+
+function autoUnsurrenderAt6PM(records) {
+  const now = new Date();
+  const manila = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const cutoff = new Date(manila);
+  cutoff.setHours(18, 0, 0, 0);
+  return records.map((record) => {
+    if (record.active && manila >= cutoff) {
+      return {
+        ...record,
+        active: false,
+        returnedAt: new Date().toISOString(),
+        autoReturned: true,
+        historyNote: 'Auto unsurrendered at 6:00 PM'
+      };
+    }
+    return record;
+  });
+}
+function syncAutoUnsurrender() {
+  const records = readRecords();
+  const updated = autoUnsurrenderAt6PM(records);
+  if (JSON.stringify(records) !== JSON.stringify(updated)) writeRecords(updated);
+}
+
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': type, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
   res.end(type.startsWith('application/json') ? JSON.stringify(body) : body);
@@ -43,7 +70,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS' }); return res.end(); }
   if (url.pathname === '/api/health' && req.method === 'GET') return send(res, 200, { ok: true, service: 'phone-surrender' });
-  if (url.pathname === '/api/records' && req.method === 'GET') return send(res, 200, readRecords());
+  if (url.pathname === '/api/records' && req.method === 'GET') { syncAutoUnsurrender(); return send(res, 200, readRecords()); }
   if (url.pathname === '/api/records' && req.method === 'POST') {
     try {
       const incoming = await readBody(req);
