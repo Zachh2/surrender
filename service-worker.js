@@ -1,15 +1,7 @@
-const CACHE = 'phone-surrender-v2';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './favicon.svg'];
-self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(caches.match(event.request).then((cached) => {
-    if (cached) return cached;
-    return fetch(event.request).then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-      return response;
-    }).catch(() => caches.match('./index.html'));
-  }));
-});
+// Retire the legacy root worker when uploading the complete package to GitHub Pages.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', event => event.waitUntil((async () => {
+  for (const key of await caches.keys()) if (['phone-surrender-v1','phone-surrender-v2','phone-surrender-v3'].includes(key)) await caches.delete(key);
+  await self.clients.claim();
+  await self.registration.unregister();
+})()));
