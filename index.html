@@ -32,6 +32,7 @@ footer{display:flex;justify-content:space-between;gap:16px;padding-top:30px;colo
   <div class="brand"><div class="brand-mark" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M10 18h4"/></svg></div><div>Surrender Desk<span class="brand-sub">Phone attendance</span></div></div>
   <div class="top-actions"><div class="network-pill" role="status"><span class="dot offline" id="networkDot"></span><span id="networkText">Connecting to register…</span></div><button class="btn btn-ghost" id="teacherBtn">Teacher access</button></div>
 </header>
+<div id="connectionNote" class="queue-note" role="status" hidden></div>
 <div class="student-view" id="studentView">
   <section class="hero"><div><div class="eyebrow">School check-in</div><h1>Phone away. Ready for class.</h1><p>Enter your details when handing in your phone. Un-surrender after you collect it.</p></div><div class="cutoff"><span>Daily auto-unsurrender</span><strong>6:00 PM</strong><span>Philippine time</span></div></section>
   <main class="layout">
@@ -58,7 +59,7 @@ footer{display:flex;justify-content:space-between;gap:16px;padding-top:30px;colo
       <div class="queue-note" id="queueNote" hidden role="status"></div>
     </div>
     <aside class="card qr-card" id="qrCard">
-      <div class="qr-info"><div class="eyebrow">Classroom QR</div><h2>One scan to check in.</h2><p>Connect to the school network, then scan this code.</p></div>
+      <div class="qr-info"><div class="eyebrow">Classroom QR</div><h2>One scan to check in.</h2><p>Scan this code to open the student check-in page.</p></div>
       <div class="qr-frame"><img id="qrImage" alt="QR code for student check-in" width="186" height="186"><div class="qr-fallback" id="qrFallback" hidden>The QR is unavailable. Use the school link below.</div></div>
       <select id="lanUrls" aria-label="School network address" hidden></select>
       <div class="qr-link" id="qrLink">Preparing the school link…</div>

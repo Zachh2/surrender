@@ -41,7 +41,7 @@
   }
   async function api(route, data, asTeacher = false) {
     if (location.protocol === 'file:') throw new Error('Open the school website link to sync.');
-    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 5000);
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
     try {
       const headers = { 'Content-Type': 'application/json', 'X-Device-Key': deviceKey || '' };
       if (asTeacher) headers.Authorization = 'Bearer ' + token;
@@ -54,9 +54,9 @@
   }
   function network() {
     const pending = records.filter(r => r.syncPending).length;
-    $('networkText').textContent = serverUp ? pending ? 'Connected · syncing' : 'School register connected' : pending ? 'Saved here · sync pending' : 'Local mode';
+    $('networkText').textContent = serverUp ? pending ? 'Connected · syncing' : 'Register connected' : pending ? 'Saved here · sync pending' : 'Connecting to register';
     $('networkDot').classList.toggle('offline', !serverUp || Boolean(pending));
-    $('teacherSync').textContent = serverUp ? 'Live register · updates every 5 seconds' : 'Last saved view · reconnect to update';
+    $('teacherSync').textContent = serverUp ? 'Live register · updates automatically' : 'Last saved view · reconnect to update';
   }
   function renderStudent() {
     const active = records.find(r => r.active);
@@ -109,14 +109,18 @@
       if (!Array.isArray(remote)) throw new Error('Invalid register response');
       const pending = records.filter(r => r.syncPending);
       records = P.maintain([...pending, ...remote.filter(r => !pending.some(p => p.id === r.id)).map(r => ({ ...r, syncPending: false }))]);
-      save(); serverUp = true;
+      save(); serverUp = true; $('connectionNote').hidden = true;
       if (teacherMode) {
         try {
           teacherRecords = await api('/records', undefined, true);
           sessionStorage.setItem(SNAPSHOT, JSON.stringify(teacherRecords));
         } catch (error) { if (error.status === 401) { clearTeacher(); openLogin('Please sign in again.'); } else throw error; }
       }
-    } catch (_) { serverUp = false; }
+    } catch (error) {
+      serverUp = false;
+      $('connectionNote').hidden = false;
+      $('connectionNote').textContent = error.status === 503 ? error.message : 'Register unreachable. Saved check-ins will sync when this page reconnects.';
+    }
     finally {
       working = false; network(); renderMode();
       if (syncAgain) { syncAgain = false; synchronize(); }
@@ -196,7 +200,7 @@
       const result = await api('/login', { password: $('teacherPin').value });
       token = result.token; sessionStorage.setItem(TOKEN, token); teacherMode = true; serverUp = true;
       $('loginModal').hidden = true; $('teacherPin').value = ''; renderMode(); await synchronize();
-    } catch (error) { $('loginError').textContent = error.status ? error.message : 'Teacher register unavailable. Open the school LAN link with the server running.'; }
+    } catch (error) { $('loginError').textContent = error.status ? error.message : 'Teacher register unreachable. Check your connection and try again.'; }
     finally { $('loginBtn').disabled = false; }
   });
   $('exitTeacherBtn').addEventListener('click', async () => { try { await api('/logout', {}, true); } catch (_) {} clearTeacher(); });
@@ -213,25 +217,12 @@
   function setQR(url) {
     pageUrl = url; $('qrLink').textContent = url;
     try { localStorage.setItem('surrender-desk-last-qr-v4', url); } catch (_) {}
-    try { const qr = qrcode(0, 'M'); qr.addData(url); qr.make(); $('qrImage').src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(qr.createSvgTag({ cellSize: 5, margin: 20, scalable: true })); }
+    try { const qr = qrcode(0, 'M'); qr.addData(url); qr.make(); $('qrImage').src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(qr.createSvgTag({ cellSize: 5, margin: 20, scalable: true })); $('qrImage').hidden = false; $('qrFallback').hidden = true; }
     catch (_) { $('qrImage').hidden = true; $('qrFallback').hidden = false; }
   }
   async function initQR() {
     if (location.protocol === 'file:') { $('qrImage').hidden = true; $('qrFallback').hidden = false; $('qrFallback').textContent = 'Open the school server link to generate its QR.'; $('qrLink').textContent = 'Local file preview'; $('copyLinkBtn').disabled = true; return; }
     const url = new URL('./', location.href); url.search = '?scan=1';
-    if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
-      try {
-        const info = await api('/health');
-        if (!info.studentUrls?.length) throw new Error('No LAN address');
-        $('lanUrls').hidden = info.studentUrls.length < 2;
-        $('lanUrls').innerHTML = info.studentUrls.map(u => '<option>' + escape(u) + '</option>').join('');
-        setQR(info.studentUrls[0]); return;
-      } catch (_) {
-        const previous = localStorage.getItem('surrender-desk-last-qr-v4');
-        if (previous) { setQR(previous); return; }
-        $('qrImage').hidden = true; $('qrFallback').hidden = false; $('qrFallback').textContent = 'Start the school server and connect this computer to Wi-Fi to generate a reachable QR.'; return;
-      }
-    }
     setQR(url.href);
   }
   $('lanUrls').addEventListener('change', () => setQR($('lanUrls').value));
@@ -247,6 +238,11 @@
     if (event.key === KEY) { try { records = P.maintain(JSON.parse(event.newValue || '[]')); renderStudent(); } catch (_) {} }
   });
   maintain(); renderMode(); network(); initQR(); synchronize();
-  setInterval(() => { maintain(); renderMode(); synchronize(); }, 5000);
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js?v=5').then(() => navigator.serviceWorker.ready).then(() => { $('cacheNote').textContent = 'This browser has saved the app for offline use.'; }).catch(() => {});
+  function poll() {
+    maintain(); renderMode();
+    if (!document.hidden) synchronize();
+    setTimeout(poll, teacherMode ? 8000 : records.some(r => r.syncPending) ? 15000 : 60000);
+  }
+  setTimeout(poll,8000);
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js?v=6').then(() => navigator.serviceWorker.ready).then(() => { $('cacheNote').textContent = 'This browser has saved the app for offline use.'; }).catch(() => {});
 })();
