@@ -3,10 +3,10 @@ const http = require('node:http'), fs = require('node:fs'), path = require('node
 const PUBLIC = path.join(__dirname, fs.existsSync(path.join(__dirname, 'public')) ? 'public' : 'dist');
 const policy = require(path.join(PUBLIC, 'policy.js'));
 function createApp(options = {}) {
-  const dataDir = options.dataDir || path.join(__dirname, 'data');
+  const dataDir = path.resolve(options.dataDir || process.env.DATA_DIR || path.join(__dirname, 'data'));
   const file = path.join(dataDir, 'records.json'), secretFile = path.join(dataDir, 'teacher-access.txt');
   fs.mkdirSync(dataDir, { recursive: true });
-  if (!fs.existsSync(file)) fs.writeFileSync(file, '[]\n');
+  if (!fs.existsSync(file)) fs.writeFileSync(file, '[]\n', { mode: 0o600 });
   let password = options.password || process.env.TEACHER_PASSWORD;
   if (!password) {
     if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(9).toString('base64url'), { mode: 0o600 });
@@ -36,7 +36,10 @@ function createApp(options = {}) {
     if (!(req.headers['content-type'] || '').startsWith('application/json')) fail(415, 'JSON required');
     let size = 0; const chunks = [];
     for await (const chunk of req) { size += chunk.length; if (size > 8192) fail(413, 'Request too large'); chunks.push(chunk); }
-    try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_) { fail(400, 'Invalid JSON'); }
+    let result;
+    try { result = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_) { fail(400, 'Invalid JSON'); }
+    if (!result || Array.isArray(result) || typeof result !== 'object') fail(400, 'JSON object required');
+    return result;
   }
   function teacher(req) {
     const token = (req.headers.authorization || '').replace(/^Bearer /, '');
@@ -54,10 +57,17 @@ function createApp(options = {}) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
-      if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) fail(403, 'Same-origin requests only');
+      // Compatibility with previously shared API index links. No API file is served.
+      if (['/api', '/api/', '/api/index', '/api/index.js'].includes(url.pathname)) url.pathname = '/api/health';
+      if (req.headers.origin) {
+        let origin;
+        try { origin = new URL(req.headers.origin); } catch (_) { fail(403, 'Same-origin requests only'); }
+        if (origin.host !== req.headers.host) fail(403, 'Same-origin requests only');
+      }
       if (req.method === 'GET' && url.pathname === '/api/health') {
+        read(); // Report healthy only if the real JSON register can be read.
         const addresses = Object.values(os.networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal).map(a => 'http://' + a.address + ':' + server.address().port + '/?scan=1');
-        return send(res, 200, { ok: true, service: 'phone-surrender', studentUrls: addresses });
+        return send(res, 200, { ok: true, service: 'phone-surrender', storage: 'json-file', version: 6, studentUrls: addresses });
       }
       if (req.method === 'POST' && url.pathname === '/api/login') {
         const key = req.socket.remoteAddress, now = Date.now();
@@ -102,7 +112,7 @@ function createApp(options = {}) {
         let record = existing || { id: input.id, ownerHash: key, name: input.name.trim(), section: input.section, phone: input.phone?.trim() || 'Not specified', surrenderedAt: new Date(start).toISOString(), active: true };
         if (!input.active) {
           const end = new Date(input.returnedAt).getTime();
-          if (!Number.isFinite(end) || end < start || end > now + 300000) fail(400, 'Invalid return time');
+          if (!Number.isFinite(end) || end < new Date(record.surrenderedAt).getTime() || end > now + 300000) fail(400, 'Invalid return time');
           const due = policy.closeAt(record.surrenderedAt);
           record = { ...record, active: false, returnedAt: new Date(Math.min(end, due)).toISOString(), autoClosed: end >= due };
         }
@@ -136,16 +146,21 @@ function createApp(options = {}) {
     for (const [key, attempt] of failures) if (attempt.until <= Date.now()) failures.delete(key);
   }, 10000);
   timer.unref(); server.on('close', () => clearInterval(timer));
-  return { server, secretFile };
+  return { server, secretFile, dataFile: file };
 }
 if (require.main === module) {
-  const { server, secretFile } = createApp();
+  if (process.env.VERCEL) throw new Error('This JSON-file edition needs a persistent Node.js server or school PC. Vercel cannot keep data/records.json permanently.');
+  const { server, secretFile, dataFile } = createApp();
   const port = Number(process.env.PORT || 4174);
-  server.listen(port, '0.0.0.0', () => {
+  server.on('error', error => { console.error(error.code === 'EADDRINUSE' ? 'Port is already in use. Close the other Surrender Desk server or change PORT in .env.' : 'Could not start server: ' + error.message); process.exitCode = 1; });
+  server.listen(port, process.env.HOST || '0.0.0.0', () => {
     console.log('Surrender Desk is ready. Keep this server running.');
+    console.log('On this computer: http://localhost:' + port + '/');
     for (const a of Object.values(os.networkInterfaces()).flat()) if (a && a.family === 'IPv4' && !a.internal) console.log('School link: http://' + a.address + ':' + port + '/');
     console.log(process.env.TEACHER_PASSWORD ? 'Teacher password: configured through TEACHER_PASSWORD.' : 'Teacher password is in: ' + secretFile);
-    console.log('Use the same Wi-Fi/LAN. No internet is required. Records: data/records.json');
+    console.log('Use the same Wi-Fi/LAN. Internet is not required while the PC is reachable.');
+    console.log('JSON records: ' + dataFile);
+    console.log('Keep one server process running for this data folder.');
   });
 }
 module.exports = { createApp };

@@ -1,4 +1,4 @@
-const CACHE = 'surrender-desk-cloud-v6-' + self.registration.scope;
+const CACHE = 'surrender-desk-json-v7-' + self.registration.scope;
 const ASSETS = ['./index.html', './app.js', './policy.js', './vendor/qrcode.js', './manifest.webmanifest', './favicon.svg'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil((async () => {

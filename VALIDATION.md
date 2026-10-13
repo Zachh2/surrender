@@ -1,19 +1,22 @@
-# Verification — 6 October 2026
+# Validation
 
-Completed on this build:
-- JavaScript syntax checks for the server, client, shared policy and service worker.
-- Five passing automated test groups: Philippine 6 PM boundaries, catch-up after shutdown, late check-ins, rolling 30-day expiry; authenticated API and independent device ownership; retry idempotency and no reopening after return; JSON persistence and corrupt-file preservation; private-file and cross-origin rejection; offline cache routing under a GitHub subpath; offline QR decoding for LAN and long GitHub URLs.
-- Local Chromium browser: student surrender saved to the server; teacher sign-in; dashboard survives refresh; manual return; month/date filters; Cirrus record excluded from Alto.
-- Offline browser test: server stopped, cached page reloaded, student surrender and return saved, browser refreshed, server restarted; queued closed record appeared in teacher history.
-- Responsive layout visually checked at 320px, 390px and desktop 1280px. No page-wide horizontal overflow at 320px. Filters scroll within their own rows; mobile records use labelled cards.
-- Runtime assets are bundled locally. No external QR, font, script, analytics or image request is required.
+Final automated check: 13 October 2026, using the supplied Node.js test runner.
 
-Limitations:
-- Safari/iOS and Opera were not available for direct device testing; no claim of exhaustive browser/device coverage.
-- First-ever offline public-URL visits cannot work. No network connection means no cross-device sync. Plain HTTP LAN URLs do not support service-worker installation on typical mobile browsers.
-- GitHub Pages cannot run this Node server. The README gives the supported LAN and static-testing setups.
-- The timer requires the server to be running. Otherwise due records are processed on restart/access; their history timestamp remains the intended cutoff.
-- JSON storage is intended for one running Node process with persistent disk.
-- The test data and preview-only password were kept in temporary test storage and excluded from this package.
+**8 tests passed.** The tests cover:
 
-Repeat with: `npm test` (Node.js 20+; no package installation needed).
+- Cached navigation and exclusion of private API responses from the service-worker cache.
+- Actual JSON file persistence and generated-password persistence after stopping and restarting the server.
+- `/api`, `/api/`, `/api/index`, `/api/index.js`, and `/api/health` route handling.
+- Twenty simultaneous student submissions without losing records in the JSON file.
+- Student device isolation, teacher authentication, logout, duplicate retries, and manual returns.
+- Invalid payloads and attempts to alter return timestamps.
+- Philippine-time 6 PM closing, catch-up after downtime, and 30-day retention.
+- QR decoding without an external QR service.
+- Private data/password files returning 404 to HTTP requests.
+- Corrupt JSON producing an error without overwriting the file. The deliberate corruption test prints a register error; this is expected.
+
+Browser checks completed on 8 October using the actual JSON server and synthetic QA records: the LAN QR pointed to the PC's network address rather than localhost; a student submission was confirmed; the teacher register displayed that student; and refresh retained teacher view. The responsive frontend was retained from the version previously checked at 320px and 390px.
+
+Physical Safari, Opera and student-phone network access were not verified. The school's Wi-Fi isolation/firewall settings and any external hosting configuration still need the two-device check in START-HERE.md.
+
+No QA records, teacher passwords or environment secrets are included in the delivery. The supplied data/records.json is an empty array. Existing user data must be backed up before replacing an older installation.

@@ -1,144 +1,100 @@
-# Surrender Desk — Vercel + Supabase setup
+# Surrender Desk — actual JSON file edition
 
-Ito ang bagong cloud version. Kasama ang `public/` folder at lahat ng backend files. **Kailangan ang buong package sa GitHub, hindi public/ lang.** Hindi pa naka-connect sa Supabase ang live website mo hanggang matapos ang steps sa ibaba.
+This version saves student records in **`data/records.json` on the school PC/server**. No Supabase, database account, or Vercel is needed.
 
-**Teacher password:** ikaw ang pipili. Ang value ng `TEACHER_PASSWORD` sa Vercel ang ilalagay sa Teacher access. Walang default password. Hindi ito ang Supabase account password o database password.
+## School PC: start here
 
-## 1. Gumawa ng Supabase project
+1. Extract the ZIP into a **new folder** on the school PC. Do not run it inside the ZIP or overwrite a folder that already contains real records.
+2. Install Node.js 22 or newer from [nodejs.org](https://nodejs.org/), if it is not installed.
+3. Double-click **`START-SCHOOL.cmd`**. Keep its terminal window open. No `npm install` is required.
+4. On that PC, open **http://localhost:4174/**. Do not double-click `public/index.html`.
+5. Open **`data/teacher-access.txt`** after the server starts. Its contents are your teacher password. The server creates a random password once and reuses it after restart. There is no default `2468` password.
+6. Connect the students' phones to the **same Wi-Fi/LAN** as the school PC. Internet/mobile data is not required while that local connection works.
+7. Scan the QR shown by the running website. It points to the PC's network address, such as `http://192.168.1.20:4174/?scan=1`. A phone cannot reach the school PC through `localhost` or `127.0.0.1`.
 
-Open [Supabase Dashboard](https://supabase.com/dashboard), create a project, and wait until it is ready. Keep the project's database password somewhere private; hindi ito kailangan ilagay sa website.
+If there are multiple network addresses, choose the school Wi-Fi/Ethernet address in the dropdown below the QR. Avoid VPN or virtual-adapter addresses. The terminal also lists the school links.
 
-## 2. I-create ang database at 6 PM schedule
+If Windows asks about Node.js network access, allow it on the school's trusted private network. Some guest Wi-Fi networks isolate devices: ask the network administrator to allow phones to reach the school PC on TCP port 4174. Keep the PC awake and the server running during use. An IP reservation on the router keeps printed QR codes stable.
 
-In your new project, open **SQL Editor → New query**.
-
-1. Open `supabase/01-schema.sql` from this package, copy its **entire contents**, paste into SQL Editor, and click **Run**. Wait for success.
-2. Create another query. Copy the entire `supabase/02-schedule.sql`, paste, and **Run**.
-3. The second query must show two jobs with `active = true`: `surrender-desk-daily-close` and `surrender-desk-maintenance`.
-
-If `pg_cron` is unavailable, enable **Integrations → Cron → pg_cron**, then rerun the second file. These are database jobs, so your laptop and the student pages can be closed. Supabase's Cron module supports SQL jobs directly. [Supabase Cron](https://supabase.com/docs/guides/cron)
-
-Keep the database/Cron timezone at its default **UTC**. The daily schedule is `10:00 UTC`, which is **6:00 PM Philippine time**. A second job catches up and removes expired history every 10 minutes. Paused or unavailable databases cannot execute jobs until they recover; API requests also run catch-up maintenance.
-
-## 3. Get your Supabase connection values
-
-Get the **Project URL** from the project's **Connect** dialog. It looks like `https://YOUR-PROJECT.supabase.co`.
-
-Go to **Project Settings → API Keys**. Create/copy a **secret key** beginning with `sb_secret_`. Use it only in the server settings below. This app sends database requests through its backend; it does not need a browser publishable key. [Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys)
-
-## 4. Upload all files to the GitHub repository
-
-Extract the ZIP. At your app's repository root, put these files/folders:
+## Where is the data?
 
 ```text
-api/
-  index.js
-lib/
-  database.js
-  handler.js
-public/
-  index.html
-  app.js
-  policy.js
-  service-worker.js
-  manifest.webmanifest
-  favicon.svg
-  vendor/
-    qrcode.js
-    QR-LICENSE.txt
-scripts/
-supabase/
-tests/
-package.json
-pnpm-lock.yaml
-vercel.json
-.env.example
-.gitignore
-START-HERE.md
-README.md
-TESTING.md
+surrender-desk-json/
+  server.js                  <- starts both website and API
+  START-SCHOOL.cmd
+  package.json
+  public/                    <- website assets only
+    index.html
+    app.js
+    policy.js
+    service-worker.js
+    manifest.webmanifest
+    favicon.svg
+    vendor/
+  data/
+    records.json             <- actual saved student data
+    teacher-access.txt       <- generated on first start
 ```
 
-`package.json` and `vercel.json` must be at the root that Vercel builds. If you upload a wrapper folder instead, set Vercel's Root Directory to that folder.
+`records.json` contains an array of records with the student's name, section, phone label, surrender time and return status. Ownership hashes associate records with a student's browser. Teacher exports omit those hashes. **Keep `data/` outside `public/`** so students cannot download the whole register or password. The server serves only `public/` as website files.
 
-For an existing v4 repository, replace its app source with this package. The old root `server.js`, root `index.html` redirect, and root service worker belong to the previous package and can be removed from the new Git commit. Keep any old private data backups outside the public repository. GitHub's Upload files button replaces matching files but does not remove obsolete files automatically.
+The supplied `data/records.json` is empty. Each accepted save updates this file using a temporary file followed by replacement. Restarting the server does not reset it. If the JSON file is damaged, the server reports an error instead of overwriting it with an empty register.
 
-Upload `public/vendor/` too: the missing QR library caused the blank QR in the earlier deployment. No external QR service is used in this version.
+For a backup, use Teacher access → Export JSON. To back up the complete on-disk register, stop the server and copy the `data/` folder to a private location. Do not manually edit `records.json` while the server is running, or upload real student data/passwords to GitHub.
 
-Do not upload `node_modules/`, a real `.env`, credentials, or student exports. `.env.example` contains placeholders only.
+## The API/index error
 
-## 5. Configure Vercel and redeploy
+There is no separate `api/index.js` deployment in this version. **`node server.js` starts the API and website together.** These routes are handled by the running server:
 
-Open your existing Vercel project, then **Settings → Environment Variables**. Add these exact names for **Production** (and Preview only if you also want preview deployments to use this database):
+- `/api/health` — should return `"ok":true` and `"storage":"json-file"`.
+- `/api/index` and `/api/index.js` — compatibility aliases for the health endpoint.
+- `/api/login`, `/api/records`, `/api/my-records` — actual app API endpoints.
 
-| Name | Value |
-| --- | --- |
-| `SUPABASE_URL` | Your HTTPS Supabase Project URL, without `/rest/v1` |
-| `SUPABASE_SECRET_KEY` | Your server secret key starting with `sb_secret_` |
-| `TEACHER_PASSWORD` | A password you choose, 12–100 characters |
+Uploading only `public/` to a static file host cannot run this API. Use the school PC instructions above or a persistent Node.js host below. The previous Vercel domain is not changed by this package.
 
-Enter these values directly in Vercel. Never put the secret key or teacher password in `public/app.js`, GitHub, or chat.
+## Test with two devices
 
-In the build settings, use:
+1. On a student's phone, open the school's network link and submit a test student. Wait for **Your teacher can see this record**.
+2. On the PC, choose **Teacher access** and enter the generated password. Select the student's section. The record should appear.
+3. Refresh the teacher page: it remains in teacher view in that tab while its login is valid.
+4. On the student's phone, tap **Un-surrender after class**. The entry moves to **History**, organized by section, year, month, and date.
+5. Stop the server with Ctrl+C and start it again. Sign in to Teacher access again; the record remains in `data/records.json`.
 
-| Setting | Value |
-| --- | --- |
-| Framework Preset | Other |
-| Root Directory | Folder containing this package's `vercel.json` |
-| Build Command | `npm run build` |
-| Output Directory | `public` |
-| Install Command | Default/automatic |
-| Node.js version | 22.x |
+Teacher sessions expire after 24 hours and are invalidated when the server restarts. A normal page refresh does not restart the server.
 
-The included `vercel.json` also specifies the build/output and API routes. Vercel serves only `public/` as static content and runs `api/index.js` as a Node function. [Vercel build settings](https://vercel.com/docs/builds/configure-a-build)
+## Daily close and offline use
 
-Save, then open **Deployments → latest deployment → Redeploy**. Changing environment variables alone does not update an existing deployment.
+The running server checks records every 10 seconds. At/after **6 PM Philippine time**, active entries are closed at their recorded 6 PM deadline and move to history. Requests also perform this check. If the server was off, it catches up when restarted/next accessed. Check-ins at or after 6 PM close the following day. This marks an entry as auto-unsurrendered; it does not confirm physical collection.
 
-## 6. Check before sharing the QR
+Closed records expire after **30 days from their return timestamp**. This is rolling retention, not a wipe of the entire register each month. Exported backup files have their own retention.
 
-1. Open `https://YOUR-SITE.vercel.app/api/health`. Expect JSON containing `"ok":true`, `"mode":"cloud"`, and `"schema":5`.
-2. Open the homepage online. Expect a visible QR and **Register connected**.
-3. Submit a test student. Wait for **Your teacher can see this record.**
-4. On a second device/browser, open the **same website**, select **Teacher access**, and enter your `TEACHER_PASSWORD`. The student should be in the correct section.
-5. Refresh the teacher page. It should stay in Teacher access in the same tab. Teacher sessions expire after 24 hours; closing the browser session can require signing in again.
-6. On the student's browser, tap **Un-surrender after class**. In Teacher access, open **History**, select the section, month, and date. The record should appear there.
-7. Verify both Supabase Cron jobs are active. In **Integrations → Cron**, check run history after the next scheduled execution.
+No internet is needed on a working school LAN. With no Wi-Fi/LAN connection at all, a phone cannot send its record to the PC. An already-open page can save pending changes locally and retry when reconnected. On plain HTTP LAN addresses, browsers generally do not allow service-worker caching, so do not expect a closed/reloaded page to open when disconnected from the PC. HTTPS hosting supports caching after the first online load. Do not clear browser data while changes are pending.
 
-Optional command-line check:
+## Optional Node.js hosting
 
-```sh
-npm run check:live -- https://YOUR-SITE.vercel.app
-```
+Use a host that supports a **long-running Node process and a persistent writable disk**. Put the **whole package** in the application folder, not only `public/`.
 
-## Offline: what works
+- Start command: `npm start`.
+- Node version: 22 or newer.
+- Build/install step: none required; there are no runtime dependencies.
+- `PORT`: use the port assigned by the hosting provider. The server binds to `0.0.0.0` by default.
+- `DATA_DIR`: set this to a private persistent disk directory, for example `/var/lib/surrender-desk` (the actual mount path depends on the host).
+- `TEACHER_PASSWORD`: optionally set your own password in the host's server environment settings. Otherwise read `teacher-access.txt` inside `DATA_DIR` after startup.
+- Run **one instance/process** for each data directory. A shared JSON file is not designed for multiple server replicas.
+- For a public domain, use the host's HTTPS reverse proxy and open the final HTTPS URL. Its QR will point to that domain.
 
-Open the deployed HTTPS site once while connected, using the browser the student will keep using. Wait for **This browser has saved the app for offline use.** The page and QR can then load from that browser's cache, and check-ins/returns are saved locally while disconnected. Reopen/keep the same page active after reconnecting so it can send the queue to Supabase.
+Vercel and GitHub Pages are not hosts for this JSON-file edition. Vercel functions have a read-only filesystem except temporary scratch storage, which is unsuitable for this persistent register. [Vercel filesystem documentation](https://vercel.com/docs/functions/runtimes#file-system-support)
 
-**The teacher cannot receive an offline phone's record until that phone reconnects.** A first-time QR scan on a phone with neither internet nor a cached copy cannot download a Vercel website. Scanning with another browser does not reuse the first browser's cache. Private browsing or clearing site data may remove saved offline records. Do not clear site data while records are waiting to sync.
+To customize a school PC, copy `.env.example` to `.env`, edit the values, and run `START-SCHOOL.cmd`/`npm start` again. Keep the `.env` private. Setting `TEACHER_PASSWORD` overrides the generated password file.
 
-For first-time use without internet, the alternative is a local school server reachable over school Wi-Fi/LAN. This package is the Vercel/Supabase version and needs internet to synchronize. A QR code provides the address; it cannot provide a network connection.
+## If a phone cannot connect
 
-## Data and daily cutoff
+- Check that the terminal still says the server is running and that the PC is awake.
+- Use the school PC's LAN address shown in the terminal, not its localhost address.
+- Put the phone and PC on a network that permits them to communicate; guest/client isolation can block this.
+- Check the firewall's private-network permission for Node.js/TCP 4174.
+- If the PC's network address changed, reload the PC's page and reprint the QR.
+- If the port is already in use, close the extra server or change `PORT` in `.env` and use the new link.
+- On managed Node hosting, ensure the provider starts `server.js` and preserves the configured data disk.
 
-Records are stored as **JSONB in a private Supabase table**, with dates and device ownership stored alongside them. Teacher **Export JSON** downloads all currently retained records as a `.json` file; **Export CSV** downloads the current filtered view. Data is not saved to a public `students.json` file.
-
-At **6 PM PHT**, active records become history marked **Auto · 6 PM**. This closes the register entry and does not prove that the phone was physically collected. A check-in made at or after 6 PM closes at the following day's 6 PM. Students can still un-surrender earlier after collecting their phones.
-
-Closed records expire **30 days after their return/auto-close timestamp**. This is a rolling 30-day policy, not deletion of all records on the first of every month. January–December tabs remain available, but expired months will be empty. Browser copies are pruned when the app runs again; exported files and provider backups are outside app cleanup.
-
-## If it still does not work
-
-| What you see | Fix |
-| --- | --- |
-| `/api/health` is 404 or an HTML page | Upload `api/`, `lib/`, and `vercel.json`; check Vercel Root Directory and redeploy the full package. |
-| Server setup incomplete | Add the named environment variables in Vercel Production and redeploy. |
-| Database setup incomplete | Run all of `supabase/01-schema.sql` in the same project as `SUPABASE_URL`. Keep the `public` schema exposed through Supabase's Data API. |
-| Database access failed | Use a secret/server key from that same project; do not use the publishable/anon key. Rerun the schema permissions if they were changed. |
-| Database temporarily unavailable | Check that the Supabase project is running, its Data API is enabled, and the Project URL is correct. Pending records remain on the student's browser. |
-| Wrong password | Use your Vercel `TEACHER_PASSWORD` value. To change it, update that variable and redeploy; previous teacher sessions become invalid. |
-| Too many login attempts | Wait 10 minutes, then enter the correct password. |
-| QR is blank | Confirm `https://YOUR-SITE.vercel.app/vendor/qrcode.js` loads JavaScript, then reload online. |
-| Previous design/script remains | Reload online after deployment, then close and reopen the page to activate its updated service worker. Keep pending data; do not clear browser storage. |
-| Student stays pending | Use the same deployed origin on both devices, bring the student's browser online, and open it to retry. Check `/api/health` first. |
-
-Your live domain has not been changed by this ZIP. After these steps, share the homepage URL if you need the public health/QR endpoints checked. Do not share your password or secret key.
+The app cannot force students to stay on a browser page. Names/sections are self-entered; the teacher should verify the physical hand-in.

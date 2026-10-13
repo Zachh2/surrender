@@ -223,6 +223,20 @@
   async function initQR() {
     if (location.protocol === 'file:') { $('qrImage').hidden = true; $('qrFallback').hidden = false; $('qrFallback').textContent = 'Open the school server link to generate its QR.'; $('qrLink').textContent = 'Local file preview'; $('copyLinkBtn').disabled = true; return; }
     const url = new URL('./', location.href); url.search = '?scan=1';
+    if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
+      try {
+        const info = await api('/health');
+        if (!info.studentUrls?.length) throw new Error('No LAN address');
+        $('lanUrls').hidden = info.studentUrls.length < 2;
+        $('lanUrls').innerHTML = info.studentUrls.map(u => '<option>' + escape(u) + '</option>').join('');
+        setQR(info.studentUrls[0]); return;
+      } catch (_) {
+        $('qrImage').hidden = true; $('qrFallback').hidden = false;
+        $('qrFallback').textContent = 'Connect the school PC to Wi-Fi and start the server to generate a phone-accessible QR.';
+        $('qrLink').textContent = 'Waiting for a school network address';
+        $('copyLinkBtn').disabled = true; return;
+      }
+    }
     setQR(url.href);
   }
   $('lanUrls').addEventListener('change', () => setQR($('lanUrls').value));
@@ -244,5 +258,5 @@
     setTimeout(poll, teacherMode ? 8000 : records.some(r => r.syncPending) ? 15000 : 60000);
   }
   setTimeout(poll,8000);
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js?v=6').then(() => navigator.serviceWorker.ready).then(() => { $('cacheNote').textContent = 'This browser has saved the app for offline use.'; }).catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js?v=7').then(() => navigator.serviceWorker.ready).then(() => { $('cacheNote').textContent = 'This browser has saved the app for offline use.'; }).catch(() => {});
 })();
